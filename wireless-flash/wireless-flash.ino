@@ -27,9 +27,18 @@ boolean buttonState = false;                  // Tracks button state for both TX
 
 // Timing Configuration
 unsigned long lastStateChange = 0; // Last time the button state changed
-boolean lastButtonState = HIGH;    // Previous button state
 
-const int BOARD_NUMBER = 1;
+unsigned long timeOfLastReceive = 0;
+
+// Edit this number when you upload to each board
+const int BOARD_NUMBER = 2;
+const int DELAY = 3000;
+const int DEBOUNCE_THRESHOLD = 30;
+
+// Debouncing
+unsigned long lastDebounce = 0;
+boolean rawButtonState = LOW;
+boolean debouncedButtonState = LOW;
 
 void setup()
 {
@@ -78,27 +87,27 @@ void setupRadio()
  */
 void transmitButtonState()
 {
-    radio.stopListening(); // Switch to transmission mode
-
-    boolean currentButtonState = digitalRead(BUTTON_PIN);
+    radio.stopListening();
+    boolean currentReading = digitalRead(BUTTON_PIN);
     unsigned long currentTime = millis();
 
-    // Check if button state has changed
-    if (currentButtonState != lastButtonState)
+    // If the reading has changed, reset the debounce timer
+    if (currentReading != rawButtonState)
     {
-        // Round to nearest ROUND_TIME
-        lastStateChange = currentTime;
-        lastButtonState = currentButtonState;
-        buttonState = currentButtonState;
+        lastDebounce = currentTime;
+        rawButtonState = currentReading;
+    }
 
-        // Transmit the new state
-        radio.write(&buttonState, sizeof(buttonState));
+    // If the reading has been stable longer than the debounce threshold and is different from the debounced state
+    if ((currentTime - lastDebounce) > DEBOUNCE_THRESHOLD && currentReading != debouncedButtonState)
+    {
+        debouncedButtonState = currentReading;
+        radio.write(&debouncedButtonState, sizeof(debouncedButtonState));
 
-        // Update local indicators
-        if (buttonState == LOW)
-        { // Button is pressed (LOW due to pull-up)
+        if (debouncedButtonState == LOW)
+        {
             digitalWrite(CONFIRM_LED_PIN, HIGH);
-            tone(BUZZER, BOARD_NUMBER == 1 ? 600 : 1000);
+            tone(BUZZER, BOARD_NUMBER == 1 ? 600 : 900);
         }
         else
         {
@@ -107,7 +116,7 @@ void transmitButtonState()
         }
     }
 
-    delay(5); // Small delay for stability
+    delay(5);
 }
 
 /**
@@ -131,6 +140,8 @@ void receiveButtonState()
         {
             digitalWrite(STATUS_LED_PIN, HIGH);
             tone(BUZZER, BOARD_NUMBER == 1 ? 600 : 900);
+
+            timeOfLastReceive = millis();
         }
     }
 
