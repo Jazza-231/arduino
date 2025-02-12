@@ -27,7 +27,6 @@ boolean buttonState = false;                  // Tracks button state for both TX
 
 // Timing Configuration
 unsigned long lastStateChange = 0; // Last time the button state changed
-
 unsigned long timeOfLastReceive = 0;
 
 // Edit this number when you upload to each board
@@ -96,6 +95,11 @@ void transmitButtonState()
     {
         lastDebounce = currentTime;
         rawButtonState = currentReading;
+    }
+
+    // If you received smth within DELAY, don't let you transmit
+    if (currentTime - timeOfLastReceive < DELAY) {
+        return;
     }
 
     // If the reading has been stable longer than the debounce threshold and is different from the debounced state
