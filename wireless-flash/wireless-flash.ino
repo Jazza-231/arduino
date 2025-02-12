@@ -26,13 +26,13 @@ const byte RADIO_CHANNEL = 110;               // Radio channel frequency
 boolean buttonState = false;                  // Tracks button state for both TX and RX
 
 // Timing Configuration
-unsigned long lastStateChange = 0; // Last time the button state changed
-unsigned long timeOfLastReceive = 0;
+unsigned long lastStateChange = 0;   // Last time the button state changed
+unsigned long timeOfLastReceive = 0; // Last time the button state was received
 
 // Edit this number when you upload to each board
-const int BOARD_NUMBER = 2;
+const int BOARD_NUMBER = 1;
 const int DELAY = 3000;
-const int DEBOUNCE_THRESHOLD = 30;
+const int DEBOUNCE_THRESHOLD = 50;
 
 // Debouncing
 unsigned long lastDebounce = 0;
@@ -98,7 +98,8 @@ void transmitButtonState()
     }
 
     // If you received smth within DELAY, don't let you transmit
-    if (currentTime - timeOfLastReceive < DELAY) {
+    if (currentTime - timeOfLastReceive < DELAY)
+    {
         return;
     }
 
@@ -139,6 +140,8 @@ void receiveButtonState()
         {
             digitalWrite(STATUS_LED_PIN, LOW);
             noTone(BUZZER);
+
+            timeOfLastReceive = millis();
         }
         else
         {
