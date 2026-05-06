@@ -2,7 +2,7 @@
  * Arduino RF24 Communication
  * This code enables two Arduino boards to communicate using NRF24L01 radio modules.
  * Each board can send and receive button press states to/from the other board.
- * Last updated 12/02/2025, Jazza
+ * Last updated 06/05/2026, Jazza
  * Licensed under GPLv3
  */
 
