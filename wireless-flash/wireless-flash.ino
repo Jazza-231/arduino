@@ -22,7 +22,7 @@ RF24 radio(RADIO_CE_PIN, RADIO_CSN_PIN);
 
 // Communication Configuration
 const byte ADDRESS[][6] = {"pipe1", "pipe2"}; // Radio addresses for two-way communication
-const byte RADIO_CHANNEL = 110;               // Radio channel frequency
+const byte RADIO_CHANNEL = 76;                // Radio channel (0-83 legal in AU, maps to 2400+N MHz)
 boolean buttonState = false;                  // Tracks button state for both TX and RX
 
 // Timing Configuration
@@ -33,6 +33,9 @@ unsigned long timeOfLastReceive = 0; // Last time the button state was received
 const int BOARD_NUMBER = 1;
 const int DELAY = 3000;
 const int DEBOUNCE_THRESHOLD = 50;
+const int TX_FAIL_THRESHOLD = 3;
+
+int consecutiveTxFailures = 0;
 
 // Debouncing
 unsigned long lastDebounce = 0;
@@ -46,6 +49,8 @@ void setup()
     pinMode(CONFIRM_LED_PIN, OUTPUT);  // Yellow LED
     pinMode(STATUS_LED_PIN, OUTPUT);   // Red LED
 
+    Serial.begin(9600);
+
     // Configure Radio
     setupRadio();
 }
@@ -56,12 +61,30 @@ void loop()
     receiveButtonState();
 }
 
+void panic()
+{
+    while (true)
+    {
+        digitalWrite(CONFIRM_LED_PIN, HIGH);
+        digitalWrite(STATUS_LED_PIN, HIGH);
+        delay(100);
+        digitalWrite(CONFIRM_LED_PIN, LOW);
+        digitalWrite(STATUS_LED_PIN, LOW);
+        delay(100);
+    }
+}
+
 /**
  * Configures the NRF24L01 radio module with required settings
  */
 void setupRadio()
 {
-    radio.begin();
+    if (!radio.begin())
+    {
+        Serial.println("Radio init FAILED");
+        panic();
+    }
+    Serial.println("Radio init ok");
 
     // Set up communication pipes
     if (BOARD_NUMBER == 1)
@@ -76,9 +99,12 @@ void setupRadio()
     }
 
     // Configure radio parameters
-    radio.setPALevel(RF24_PA_MAX);   // Set to maximum power
+    radio.setPALevel(RF24_PA_LOW);   // Set to low power
     radio.setDataRate(RF24_250KBPS); // Set data rate to 250kbps
-    radio.setChannel(RADIO_CHANNEL); // Set radio channel
+    radio.setChannel(RADIO_CHANNEL);
+    radio.setAutoAck(true);
+    radio.setRetries(5, 15); // 1500us between retries, up to 15 attempts
+    radio.startListening();  // Default to listening mode
 }
 
 /**
@@ -86,7 +112,6 @@ void setupRadio()
  */
 void transmitButtonState()
 {
-    radio.stopListening();
     boolean currentReading = digitalRead(BUTTON_PIN);
     unsigned long currentTime = millis();
 
@@ -107,7 +132,23 @@ void transmitButtonState()
     if ((currentTime - lastDebounce) > DEBOUNCE_THRESHOLD && currentReading != debouncedButtonState)
     {
         debouncedButtonState = currentReading;
-        radio.write(&debouncedButtonState, sizeof(debouncedButtonState));
+        radio.stopListening(); // Only leave RX mode for the actual transmit
+        bool txOk = radio.write(&debouncedButtonState, sizeof(debouncedButtonState));
+        radio.startListening(); // Return to listening immediately
+        Serial.println(txOk ? "TX ok" : "TX FAILED");
+
+        if (txOk)
+        {
+            consecutiveTxFailures = 0;
+        }
+        else
+        {
+            consecutiveTxFailures++;
+            if (consecutiveTxFailures >= TX_FAIL_THRESHOLD)
+            {
+                panic();
+            }
+        }
 
         if (debouncedButtonState == LOW)
         {
@@ -129,11 +170,11 @@ void transmitButtonState()
  */
 void receiveButtonState()
 {
-    radio.startListening(); // Switch to receiving mode
-
     if (radio.available())
     {
         radio.read(&buttonState, sizeof(buttonState));
+        Serial.print("Received: ");
+        Serial.println(buttonState);
 
         // Update status LED based on received button state
         if (buttonState == HIGH)
